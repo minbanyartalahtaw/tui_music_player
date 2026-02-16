@@ -5,7 +5,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Bar, BarChart, BarGroup, Block, BorderType, Borders, Gauge, List, ListItem, Padding, Paragraph},
+    widgets::{
+        Bar, BarChart, BarGroup, Block, BorderType, Borders, Clear, Gauge, List, ListItem, Padding,
+        Paragraph,
+    },
 };
 
 use crate::app::{App, EqState, RepeatMode};
@@ -17,8 +20,13 @@ const DARK_GRAY: Color = Color::DarkGray;
 const GREEN: Color = Color::Green;
 const YELLOW: Color = Color::Yellow;
 const HIGHLIGHT_BG: Color = Color::Rgb(35, 35, 55);
-/// Background of the EQ popup box only (so it doesn't overlap with content underneath).
 const EQ_POPUP_BG: Color = Color::Rgb(18, 18, 24);
+
+fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
+    let popup_x = area.width.saturating_sub(width) / 2;
+    let popup_y = area.height.saturating_sub(height) / 2;
+    Rect::new(area.x + popup_x, area.y + popup_y, width, height)
+}
 
 fn format_duration(d: Duration) -> String {
     let total_secs = d.as_secs();
@@ -194,31 +202,37 @@ fn resample_spectrum(data: &[u64], target_len: usize) -> Vec<u64> {
     (0..target_len)
         .map(|i| {
             let lo = i * data.len() / target_len;
-            let hi = ((i + 1) * data.len() / target_len).max(lo + 1).min(data.len());
+            let hi = ((i + 1) * data.len() / target_len)
+                .max(lo + 1)
+                .min(data.len());
             let sum: u64 = data[lo..hi].iter().sum();
             sum / (hi - lo) as u64
         })
         .collect()
 }
 
-/// Equalizer popup: centered box with solid background so it doesn't overlap the under layer.
+/// Equalizer popup: Clear the area first, then draw a centered box with solid background and borders.
 fn draw_eq_popup(frame: &mut Frame, app: &App) {
     const POPUP_W: u16 = 44;
     const POPUP_H: u16 = 14;
     let area = frame.area();
-    let popup_x = area.width.saturating_sub(POPUP_W) / 2;
-    let popup_y = area.height.saturating_sub(POPUP_H) / 2;
-    let popup_rect = Rect::new(area.x + popup_x, area.y + popup_y, POPUP_W, POPUP_H);
+    let popup_rect = centered_rect(area, POPUP_W, POPUP_H);
+
+    // Clear the popup area so background text does not show through.
+    frame.render_widget(Clear, popup_rect);
 
     let block = Block::default()
-        .style(Style::default().bg(EQ_POPUP_BG))
-        .title(Line::from(vec![
-            Span::styled(" Equalizer ", Style::default().fg(CYAN).add_modifier(Modifier::BOLD)),
-            Span::styled(" Ctrl+E close ", Style::default().fg(DARK_GRAY)),
-        ]))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(CYAN));
+        .border_style(Style::default().fg(CYAN))
+        .style(Style::default().bg(EQ_POPUP_BG))
+        .title(Line::from(vec![
+            Span::styled(
+                " Equalizer ",
+                Style::default().fg(CYAN).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" Ctrl+E close ", Style::default().fg(DARK_GRAY)),
+        ]));
 
     let inner = block.inner(popup_rect);
     frame.render_widget(block, popup_rect);
@@ -244,13 +258,20 @@ fn draw_eq_popup(frame: &mut Frame, app: &App) {
         } else {
             Style::default().fg(GRAY)
         };
-        let gauge_style = if is_selected { Style::default().fg(CYAN) } else { Style::default().fg(DARK_GRAY) };
+        let gauge_style = if is_selected {
+            Style::default().fg(CYAN)
+        } else {
+            Style::default().fg(DARK_GRAY)
+        };
 
         let label_rect = Rect::new(inner.x + 1, row_y, label_w, 1);
         let gauge_rect = Rect::new(inner.x + 1 + label_w, row_y, gauge_w, 1);
         let db_rect = Rect::new(inner.x + 1 + label_w + gauge_w, row_y, db_w, 1);
 
-        frame.render_widget(Paragraph::new(Line::from(Span::styled(label, style))), label_rect);
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(label, style))),
+            label_rect,
+        );
 
         let gauge = Gauge::default()
             .gauge_style(gauge_style)
@@ -259,7 +280,10 @@ fn draw_eq_popup(frame: &mut Frame, app: &App) {
         frame.render_widget(gauge, gauge_rect);
 
         let db_str = format!("{:+.0} dB", db);
-        frame.render_widget(Paragraph::new(Line::from(Span::styled(db_str, style))), db_rect);
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(db_str, style))),
+            db_rect,
+        );
     }
 
     let hint = Line::from(vec![
@@ -267,7 +291,12 @@ fn draw_eq_popup(frame: &mut Frame, app: &App) {
         Span::styled("↑ ↓ gain  ", Style::default().fg(DARK_GRAY)),
         Span::styled("Esc/Ctrl+E close", Style::default().fg(DARK_GRAY)),
     ]);
-    let hint_rect = Rect::new(inner.x, inner.y + inner.height.saturating_sub(2), inner.width, 1);
+    let hint_rect = Rect::new(
+        inner.x,
+        inner.y + inner.height.saturating_sub(2),
+        inner.width,
+        1,
+    );
     frame.render_widget(Paragraph::new(hint), hint_rect);
 }
 
@@ -324,8 +353,7 @@ fn draw_now_playing(frame: &mut Frame, app: &App, area: Rect) {
         .map(|d| format_duration(d))
         .unwrap_or_else(|| "─:──".to_string());
 
-    let bar_width =
-        (chunks[1].width as usize).saturating_sub(pos_str.len() + dur_str.len() + 2);
+    let bar_width = (chunks[1].width as usize).saturating_sub(pos_str.len() + dur_str.len() + 2);
     let ratio = match dur {
         Some(d) if d.as_secs() > 0 => (pos.as_secs_f64() / d.as_secs_f64()).clamp(0.0, 1.0),
         _ => 0.0,
