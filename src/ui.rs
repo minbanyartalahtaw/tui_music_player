@@ -8,7 +8,7 @@ use ratatui::{
     widgets::{Bar, BarChart, BarGroup, Block, BorderType, Borders, Gauge, List, ListItem, Padding, Paragraph},
 };
 
-use crate::app::{App, RepeatMode};
+use crate::app::{App, EqState, RepeatMode};
 
 const CYAN: Color = Color::Cyan;
 const WHITE: Color = Color::White;
@@ -17,6 +17,8 @@ const DARK_GRAY: Color = Color::DarkGray;
 const GREEN: Color = Color::Green;
 const YELLOW: Color = Color::Yellow;
 const HIGHLIGHT_BG: Color = Color::Rgb(35, 35, 55);
+/// Background of the EQ popup box only (so it doesn't overlap with content underneath).
+const EQ_POPUP_BG: Color = Color::Rgb(18, 18, 24);
 
 fn format_duration(d: Duration) -> String {
     let total_secs = d.as_secs();
@@ -199,7 +201,7 @@ fn resample_spectrum(data: &[u64], target_len: usize) -> Vec<u64> {
         .collect()
 }
 
-/// Equalizer popup: centered overlay with 3 band gauges; selected band highlighted.
+/// Equalizer popup: centered box with solid background so it doesn't overlap the under layer.
 fn draw_eq_popup(frame: &mut Frame, app: &App) {
     const POPUP_W: u16 = 44;
     const POPUP_H: u16 = 14;
@@ -209,6 +211,7 @@ fn draw_eq_popup(frame: &mut Frame, app: &App) {
     let popup_rect = Rect::new(area.x + popup_x, area.y + popup_y, POPUP_W, POPUP_H);
 
     let block = Block::default()
+        .style(Style::default().bg(EQ_POPUP_BG))
         .title(Line::from(vec![
             Span::styled(" Equalizer ", Style::default().fg(CYAN).add_modifier(Modifier::BOLD)),
             Span::styled(" Ctrl+E close ", Style::default().fg(DARK_GRAY)),
@@ -221,13 +224,13 @@ fn draw_eq_popup(frame: &mut Frame, app: &App) {
     frame.render_widget(block, popup_rect);
 
     let selected = app.eq_selected_band();
-    let band_labels = ["Bass  ", "Mid   ", "Treble"];
 
     let label_w = 8u16;
     let db_w = 8u16;
     let gauge_w = inner.width.saturating_sub(label_w + db_w + 2).max(4);
 
-    for (i, &label) in band_labels.iter().enumerate() {
+    for i in 0..EqState::BAND_COUNT {
+        let label = format!("{:<6}", EqState::band_name(i));
         let row_y = inner.y + 2 + i as u16;
         if row_y >= inner.y + inner.height {
             break;

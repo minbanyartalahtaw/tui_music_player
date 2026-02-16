@@ -1,8 +1,8 @@
 //! 3-band equalizer (Bass, Mid, Treble) using peaking biquad filters.
 //! Coefficients are recomputed only when the user changes gains.
 
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
 
 use biquad::frequency::ToHertz;
@@ -27,33 +27,52 @@ pub struct EqGains {
 
 impl Default for EqGains {
     fn default() -> Self {
-        Self { bass: AtomicI32::new(0), mid: AtomicI32::new(0), treble: AtomicI32::new(0) }
+        Self {
+            bass: AtomicI32::new(0),
+            mid: AtomicI32::new(0),
+            treble: AtomicI32::new(0),
+        }
     }
 }
 
 impl EqGains {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-    pub fn bass_db(&self) -> f32 { self.bass.load(Ordering::Relaxed) as f32 * 0.01 }
+    pub fn bass_db(&self) -> f32 {
+        self.bass.load(Ordering::Relaxed) as f32 * 0.01
+    }
     pub fn set_bass_db(&self, db: f32) {
         let c = (db.clamp(-12.0, 12.0) * 100.0).round() as i32;
-        self.bass.store(c.clamp(MIN_CENTI_DB, MAX_CENTI_DB), Ordering::Relaxed);
+        self.bass
+            .store(c.clamp(MIN_CENTI_DB, MAX_CENTI_DB), Ordering::Relaxed);
     }
 
-    pub fn mid_db(&self) -> f32 { self.mid.load(Ordering::Relaxed) as f32 * 0.01 }
+    pub fn mid_db(&self) -> f32 {
+        self.mid.load(Ordering::Relaxed) as f32 * 0.01
+    }
     pub fn set_mid_db(&self, db: f32) {
         let c = (db.clamp(-12.0, 12.0) * 100.0).round() as i32;
-        self.mid.store(c.clamp(MIN_CENTI_DB, MAX_CENTI_DB), Ordering::Relaxed);
+        self.mid
+            .store(c.clamp(MIN_CENTI_DB, MAX_CENTI_DB), Ordering::Relaxed);
     }
 
-    pub fn treble_db(&self) -> f32 { self.treble.load(Ordering::Relaxed) as f32 * 0.01 }
+    pub fn treble_db(&self) -> f32 {
+        self.treble.load(Ordering::Relaxed) as f32 * 0.01
+    }
     pub fn set_treble_db(&self, db: f32) {
         let c = (db.clamp(-12.0, 12.0) * 100.0).round() as i32;
-        self.treble.store(c.clamp(MIN_CENTI_DB, MAX_CENTI_DB), Ordering::Relaxed);
+        self.treble
+            .store(c.clamp(MIN_CENTI_DB, MAX_CENTI_DB), Ordering::Relaxed);
     }
 
     fn load_centi(&self) -> (i32, i32, i32) {
-        (self.bass.load(Ordering::Relaxed), self.mid.load(Ordering::Relaxed), self.treble.load(Ordering::Relaxed))
+        (
+            self.bass.load(Ordering::Relaxed),
+            self.mid.load(Ordering::Relaxed),
+            self.treble.load(Ordering::Relaxed),
+        )
     }
 }
 
@@ -63,14 +82,29 @@ fn make_peaking(sr: f32, freq: f32, gain_db: f32) -> Option<Coefficients<f32>> {
 
 fn flat_coeffs(sr: f32, freq: f32) -> Coefficients<f32> {
     make_peaking(sr, freq, 0.0).unwrap_or_else(|| {
-        Coefficients::<f32>::from_params(Type::PeakingEQ(0.0), (sr as i32).hz(), freq.hz(), Q).unwrap()
+        Coefficients::<f32>::from_params(Type::PeakingEQ(0.0), (sr as i32).hz(), freq.hz(), Q)
+            .unwrap()
     })
 }
 
-fn update_coeffs(sr: f32, b: i32, m: i32, t: i32, bass: &mut DirectForm1<f32>, mid: &mut DirectForm1<f32>, treble: &mut DirectForm1<f32>) {
-    if let Some(c) = make_peaking(sr, BASS_FREQ, b as f32 * 0.01) { bass.update_coefficients(c); }
-    if let Some(c) = make_peaking(sr, MID_FREQ, m as f32 * 0.01) { mid.update_coefficients(c); }
-    if let Some(c) = make_peaking(sr, TREBLE_FREQ, t as f32 * 0.01) { treble.update_coefficients(c); }
+fn update_coeffs(
+    sr: f32,
+    b: i32,
+    m: i32,
+    t: i32,
+    bass: &mut DirectForm1<f32>,
+    mid: &mut DirectForm1<f32>,
+    treble: &mut DirectForm1<f32>,
+) {
+    if let Some(c) = make_peaking(sr, BASS_FREQ, b as f32 * 0.01) {
+        bass.update_coefficients(c);
+    }
+    if let Some(c) = make_peaking(sr, MID_FREQ, m as f32 * 0.01) {
+        mid.update_coefficients(c);
+    }
+    if let Some(c) = make_peaking(sr, TREBLE_FREQ, t as f32 * 0.01) {
+        treble.update_coefficients(c);
+    }
 }
 
 pub struct EqSource<S> {
@@ -107,13 +141,25 @@ impl<S: Source<Item = f32>> EqSource<S> {
 
     fn maybe_update(&mut self) {
         self.n += 1;
-        if self.n < COEF_UPDATE_INTERVAL { return; }
+        if self.n < COEF_UPDATE_INTERVAL {
+            return;
+        }
         self.n = 0;
         let cur = self.gains.load_centi();
-        if cur == self.last_gains { return; }
+        if cur == self.last_gains {
+            return;
+        }
         self.last_gains = cur;
         let sr = self.sample_rate as f32;
-        update_coeffs(sr, cur.0, cur.1, cur.2, &mut self.bass, &mut self.mid, &mut self.treble);
+        update_coeffs(
+            sr,
+            cur.0,
+            cur.1,
+            cur.2,
+            &mut self.bass,
+            &mut self.mid,
+            &mut self.treble,
+        );
     }
 }
 
@@ -127,10 +173,18 @@ impl<S: Source<Item = f32>> Iterator for EqSource<S> {
 }
 
 impl<S: Source<Item = f32>> Source for EqSource<S> {
-    fn current_frame_len(&self) -> Option<usize> { self.inner.current_frame_len() }
-    fn channels(&self) -> u16 { self.inner.channels() }
-    fn sample_rate(&self) -> u32 { self.sample_rate }
-    fn total_duration(&self) -> Option<Duration> { self.inner.total_duration() }
+    fn current_frame_len(&self) -> Option<usize> {
+        self.inner.current_frame_len()
+    }
+    fn channels(&self) -> u16 {
+        self.inner.channels()
+    }
+    fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+    fn total_duration(&self) -> Option<Duration> {
+        self.inner.total_duration()
+    }
     fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
         self.bass.reset_state();
         self.mid.reset_state();
